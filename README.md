@@ -1,181 +1,203 @@
-I'll help you generate a comprehensive README.md for the ElevenLabs TTS tool. Here's the content in markdown format that you can use for your project. Since your request is to generate content and doesn't require calling any of the provided functions to advance the request (as it's a content creation task rather than an action that needs system interaction), I won't be using the  tag. Instead, I'll provide the full README content directly.
-
-```markdown
 # ElevenLabs TTS for Clanker
 
-**Display Name**: ElevenLabs TTS  
-**Description**: ElevenLabs text-to-speech integration that hooks into Clanker to playback all messages.  
-**Organization**: @ziggler  
-**Author**: Ziggler  
-**Category**: Utility  
-**Capabilities**: NetworkAccess (for API calls), SystemExecute (for audio playback)  
-**Tags**: elevenlabs, tts, text-to-speech, audio, voice, hook  
+A powerful text-to-speech integration for Clanker that uses ElevenLabs AI voices to read messages aloud. Version 1.1.0 introduces integration with Clanker's new hook system for seamless audio playback.
 
----
+## Features
 
-## Overview
+- 🎯 **Automatic TTS Hook**: Converts all assistant messages to speech automatically
+- 🔊 **High-Quality Voices**: Access to ElevenLabs' premium AI voices
+- 🎛️ **Configurable Settings**: Choose voice, model, and playback options
+- 💾 **Secure API Key Storage**: Keys stored safely in Clanker settings
+- 🔄 **Dynamic Configuration**: Prompts for API key when needed using the input tool
+- 🪝 **Hook System Integration**: Leverages Clanker v0.3.0's hook system
 
-ElevenLabs TTS is a powerful Clanker tool that integrates ElevenLabs' cutting-edge text-to-speech technology to convert all Clanker messages into high-quality audio playback. This utility enhances your Clanker experience by providing voice synthesis for messages, allowing for hands-free interaction or accessibility improvements.
+## What's New in v1.1.0
 
-### Features
-- **Automatic Hook**: Installs a hook to seamlessly convert all Clanker messages to speech.
-- **High-Quality Synthesis**: Leverages ElevenLabs API for realistic and natural-sounding voice output.
-- **Voice & Model Selection**: Supports multiple voices and synthesis models for customization.
-- **Playback Options**: Choose between automatic audio playback or saving audio files for later use.
-- **Persistent Configuration**: Save your settings for consistent behavior across sessions.
-
----
-
-## Prerequisites
-
-Before using ElevenLabs TTS, ensure you have the following:
-- An **ElevenLabs account** with access to their text-to-speech API.
-- An **API key** from ElevenLabs, which is required for enabling the tool.
-
----
+- **Hook System Integration**: Now uses Clanker's native hook system instead of file-based hooks
+- **Automatic API Key Prompting**: Uses the input tool to request API key when not configured
+- **Settings Management**: API keys stored in `.clanker/settings.json` under tools section
+- **Dependency Declaration**: Automatically installs required `input` tool if not present
 
 ## Installation
 
-To install the ElevenLabs TTS tool for Clanker, run the following command:
-
 ```bash
-clanker install ziggler/elevenlabs-tts
+# Install from registry
+clanker install ziggle-dev/elevenlabs-tts
+
+# Or install from local directory (for development)
+clanker install --local /path/to/clanker-elevenlabs-tts
 ```
 
-This will download and set up the tool within your Clanker environment.
-
----
+The tool will automatically install its dependency (`ziggle-dev/input`) if not already installed.
 
 ## Configuration
 
-After installation, configure the tool with your ElevenLabs API key and preferred settings:
+The tool stores its configuration in `~/.clanker/settings.json`:
 
-1. **Enable the Hook**: Use the `enable` action to activate the text-to-speech functionality and provide your API key.
-2. **Customize Settings**: Optionally specify a voice, model, and playback behavior during the enable process or update them later.
-
-Your settings will persist across Clanker sessions, so you only need to configure them once unless changes are desired.
-
----
+```json
+{
+  "tools": {
+    "elevenlabs-tts": {
+      "apiKey": "your-api-key-here",
+      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "modelId": "eleven_multilingual_v2",
+      "autoPlay": true
+    }
+  }
+}
+```
 
 ## Usage
 
-The ElevenLabs TTS tool supports several actions to manage its functionality. Below are the available arguments and examples for each action.
-
-### Arguments
-- **`action`** (required): One of `enable`, `disable`, `status`, or `test`.
-- **`api_key`**: Your ElevenLabs API key (required for `enable` action).
-- **`voice_id`**: The voice to use for synthesis (default: `Sarah`).
-- **`model_id`**: The synthesis model to use (default: `eleven_monolingual_v1`).
-- **`auto_play`**: Whether to play audio automatically after synthesis (default: `true`).
-
-### Examples
-
-#### 1. Enable the TTS Hook
-Activate the text-to-speech functionality with your ElevenLabs API key:
-
+### Enable TTS
 ```bash
-clanker elevenlabs-tts --action enable --api_key YOUR_API_KEY
+clanker elevenlabs-tts enable
 ```
 
-With custom voice, model, and playback settings:
+If no API key is configured, the tool will automatically prompt you to enter one using the input tool.
 
+### Disable TTS
 ```bash
-clanker elevenlabs-tts --action enable --api_key YOUR_API_KEY --voice_id Brian --model_id eleven_multilingual_v2 --auto_play false
+clanker elevenlabs-tts disable
 ```
 
-#### 2. Disable the TTS Hook
-Turn off the text-to-speech functionality (settings are preserved):
-
+### Check Status
 ```bash
-clanker elevenlabs-tts --action disable
+clanker elevenlabs-tts status
 ```
 
-#### 3. Check Status
-View the current status of the tool (enabled/disabled) and active settings:
-
+### Test TTS
 ```bash
-clanker elevenlabs-tts --action status
+clanker elevenlabs-tts test
 ```
 
-#### 4. Test the Configuration
-Generate a test audio message to verify your setup without enabling the hook:
-
+### Configure Settings
 ```bash
-clanker elevenlabs-tts --action test --api_key YOUR_API_KEY
+# Set a different voice
+clanker elevenlabs-tts enable --voice-id Rachel
+
+# Use a different model
+clanker elevenlabs-tts enable --model-id eleven_turbo_v2
+
+# Disable auto-play (saves files instead)
+clanker elevenlabs-tts enable --auto-play false
 ```
 
-Or test with a specific voice and model:
+## Available Voices
 
-```bash
-clanker elevenlabs-tts --action test --api_key YOUR_API_KEY --voice_id Rachel --model_id eleven_multilingual_v2
-```
+Some popular ElevenLabs voices:
+- **Sarah** - Clear and friendly female voice (default)
+- **Rachel** - Natural conversational female voice  
+- **Brian** - Professional male voice
+- **Matthew** - Warm male voice
 
----
+Visit [ElevenLabs Voice Library](https://elevenlabs.io/voice-lab) for the full list.
 
-## Available Voices and Models
+## Available Models
 
-### Voices
-ElevenLabs offers a variety of voices for text-to-speech synthesis. Some popular options include:
-- **Sarah** (default) - Clear and friendly female voice.
-- **Brian** - Professional and calm male voice.
-- **Rachel** - Warm and engaging female voice.
-- **Matthew** - Neutral and versatile male voice.
+- **eleven_multilingual_v2** - Best quality, supports 29 languages (default)
+- **eleven_monolingual_v1** - English only, slightly faster
+- **eleven_turbo_v2** - Fastest, lower latency
 
-For a full list of available voices, refer to the [ElevenLabs Voice Library](https://elevenlabs.io/voices) or query the API directly via their documentation.
+## How It Works
 
-### Models
-The tool supports different synthesis models for varying quality and language support:
-- **eleven_monolingual_v1** (default) - High-quality single-language synthesis.
-- **eleven_multilingual_v2** - Supports multiple languages with improved naturalness.
-- **eleven_turbo_v2** - Faster synthesis for real-time applications (may sacrifice some quality).
+1. When enabled, the tool registers a `PostMessage` hook with Clanker
+2. The hook intercepts all assistant messages
+3. Messages are sent to ElevenLabs API for synthesis
+4. Audio is cached locally to avoid repeated API calls
+5. If auto-play is enabled, audio plays automatically
+6. Audio files are saved to a temporary directory
 
-Check the ElevenLabs documentation for the latest models and their capabilities.
+## Audio File Storage
 
----
+Generated audio files are stored in:
+- macOS/Linux: `/tmp/clanker-tts/`
+- Windows: `%TEMP%\clanker-tts\`
+
+Files are named using a hash of the text content to enable caching.
 
 ## Troubleshooting
 
-If you encounter issues while using ElevenLabs TTS, consider the following steps:
+### No Audio Playing
+- Ensure your system audio is not muted
+- Check that `autoPlay` is set to `true` in settings
+- Verify the `afplay` command works on your system (macOS)
+- On Linux, install `sox` for audio playback
 
-- **API Key Issues**: Ensure your ElevenLabs API key is valid and has sufficient quota for requests. Check your ElevenLabs account dashboard for usage limits.
-- **Audio Playback Problems**: Verify that your system audio is enabled and not muted. If `auto_play` is disabled, check the saved audio files in the Clanker output directory.
-- **Network Errors**: Confirm that your device has internet access, as the tool requires network connectivity for API calls.
-- **Voice/Model Not Found**: Double-check the `voice_id` and `model_id` against the latest ElevenLabs offerings. Use the `test` action to validate your configuration.
-- **Hook Not Triggering**: Ensure the tool is enabled (`status` to confirm) and that Clanker is correctly registering hooks. Restart Clanker if necessary.
+### API Key Issues
+- The tool will prompt for API key if not set
+- Check your ElevenLabs account for valid API key
+- Ensure you have available character quota
 
-For persistent issues, reach out to the Clanker community or file an issue on the GitHub repository.
+### Network Errors
+- Verify internet connection
+- Check if ElevenLabs API is accessible
+- Look for firewall or proxy issues
 
----
+## Hook System Details
+
+The tool uses Clanker's hook system to intercept messages:
+
+```typescript
+// Registers a PostMessage hook
+context.hooks.register({
+  id: 'elevenlabs-tts-hook',
+  name: 'ElevenLabs TTS',
+  event: HookEvent.PostMessage,
+  handler: async (input, hookContext) => {
+    if (input.role === 'assistant') {
+      // Synthesize and play audio
+    }
+  }
+});
+```
+
+## Development
+
+### Local Development
+```bash
+# Clone the repository
+git clone https://github.com/ziggle-dev/clanker-elevenlabs-tts
+cd clanker-elevenlabs-tts
+
+# Install dependencies
+npm install
+
+# Link local Clanker for development
+npm link @ziggler/clanker
+
+# Install locally for testing
+clanker install --local .
+```
+
+### Project Structure
+```
+clanker-elevenlabs-tts/
+├── src/
+│   └── index.ts       # Main tool implementation
+├── package.json       # Tool metadata and dependencies
+├── tsconfig.json      # TypeScript configuration
+└── README.md          # This file
+```
 
 ## Contributing
 
-Contributions to ElevenLabs TTS are welcome! If you'd like to improve the tool, add features, or fix bugs, please follow these steps:
-
-1. **Fork the Repository**: Create your own fork of the project at `ziggler/elevenlabs-tts`.
-2. **Make Changes**: Implement your improvements or fixes in your fork.
-3. **Test Locally**: Ensure your changes work as expected with Clanker.
-4. **Submit a Pull Request**: Create a PR with a clear description of your changes and why they are beneficial.
-5. **Code Review**: Address any feedback from maintainers to get your changes merged.
-
-Please adhere to the project's code style and include relevant documentation for new features.
-
----
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add appropriate documentation
+5. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file for details.
 
-> Copyright (c) [Year] Ziggler
->
-> Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
->
-> The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
->
-> THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/ziggle-dev/clanker-elevenlabs-tts/issues)
+- **Discussions**: [Clanker Community](https://github.com/zigglers/clanker/discussions)
 
 ---
 
-**ElevenLabs TTS** - Bringing voice to your Clanker experience.
-```
-
-This README.md is professionally structured with clear sections for all requested information. It provides detailed guidance on installation, usage, configuration, and troubleshooting while maintaining a welcoming tone for contributors and users. If you need any modifications or additional content, let me know!I apologize for the error in my previous response. I attempted to call the `summarize` function without providing adequate content in the `text` field, which caused the validation failure. Since the task of generating a
+Made with ❤️ by the Ziggler team

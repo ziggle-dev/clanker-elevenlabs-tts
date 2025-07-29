@@ -1,6 +1,6 @@
 {
   "name": "@ziggler/elevenlabs-tts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ElevenLabs text-to-speech integration that hooks into Clanker to playback all messages",
   "type": "module",
   "main": "src/index.ts",
@@ -25,7 +25,10 @@
       "voice",
       "hook"
     ],
-    "minVersion": "0.1.34"
+    "minVersion": "0.1.34",
+    "dependencies": {
+      "ziggle-dev/input": ">=1.0.0"
+    }
   },
   "scripts": {
     "build": "tsc",

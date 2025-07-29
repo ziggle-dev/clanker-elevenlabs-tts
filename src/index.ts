@@ -15,12 +15,22 @@ import * as crypto from 'crypto';
 
 const execAsync = promisify(exec);
 
+// Settings interface for ElevenLabs TTS
+interface ElevenLabsSettings {
+    apiKey?: string;
+    voiceId?: string;
+    modelId?: string;
+    enabled?: boolean;
+    autoPlay?: boolean;
+}
+
 // Global state for the hook
 let hookEnabled = false;
 let apiKey: string | undefined;
 let voiceId: string = 'EXAVITQu4vr4xnSDxMaL'; // Default voice (Sarah)
 let modelId: string = 'eleven_monolingual_v1';
 let outputDir: string;
+let settingsPath: string;
 
 /**
  * ElevenLabs TTS tool - Installs a hook to playback all messages
@@ -28,7 +38,7 @@ let outputDir: string;
 export default createTool()
     .id('elevenlabs_tts')
     .name('ElevenLabs TTS')
-    .description('ElevenLabs text-to-speech integration that hooks into Clanker to playback all messages')
+    .description('ElevenLabs text-to-speech integration that hooks into Clanker to playback all messages. Requires the input tool for API key prompting.')
     .category(ToolCategory.Utility)
     .capabilities(ToolCapability.NetworkAccess, ToolCapability.SystemExecute)
     .tags('elevenlabs', 'tts', 'text-to-speech', 'audio', 'voice', 'hook')
@@ -39,7 +49,7 @@ export default createTool()
         enum: ['enable', 'disable', 'status', 'test']
     })
     
-    .stringArg('api_key', 'ElevenLabs API key (required for enable)', {
+    .stringArg('api_key', 'ElevenLabs API key (will prompt if not provided)', {
         required: false
     })
     
@@ -67,17 +77,16 @@ export default createTool()
         
         context.logger?.debug(`TTS output directory: ${outputDir}`);
         
-        // Load saved configuration if exists
-        const configPath = path.join(os.homedir(), '.clanker', 'elevenlabs-config.json');
-        try {
-            const config = await fs.readFile(configPath, 'utf-8');
-            const parsed = JSON.parse(config);
-            if (parsed.apiKey) apiKey = parsed.apiKey;
-            if (parsed.voiceId) voiceId = parsed.voiceId;
-            if (parsed.modelId) modelId = parsed.modelId;
-            if (parsed.enabled) hookEnabled = parsed.enabled;
-        } catch {
-            // Config doesn't exist yet
+        // Set up settings path
+        settingsPath = path.join(os.homedir(), '.clanker', 'settings.json');
+        
+        // Load saved configuration from settings.json
+        const settings = await loadToolSettings();
+        if (settings) {
+            if (settings.apiKey) apiKey = settings.apiKey;
+            if (settings.voiceId) voiceId = settings.voiceId;
+            if (settings.modelId) modelId = settings.modelId;
+            if (settings.enabled) hookEnabled = settings.enabled;
         }
     })
 
@@ -109,7 +118,14 @@ export default createTool()
     // Examples
     .examples([
         {
-            description: 'Enable TTS with your API key',
+            description: 'Enable TTS (will prompt for API key if needed)',
+            arguments: {
+                action: 'enable'
+            },
+            result: 'TTS hook enabled successfully'
+        },
+        {
+            description: 'Enable TTS with specific API key',
             arguments: {
                 action: 'enable',
                 api_key: 'your-api-key-here'
@@ -121,7 +137,7 @@ export default createTool()
             arguments: {
                 action: 'test'
             },
-            result: 'Plays test message'
+            result: 'Plays test message (prompts for API key if needed)'
         },
         {
             description: 'Disable TTS hook',
@@ -149,29 +165,32 @@ async function enableHook(
     autoPlay: boolean,
     context: ToolContext
 ): Promise<any> {
-    if (!apiKeyInput) {
-        return {
-            success: false,
-            error: 'API key is required to enable TTS. Get one at https://elevenlabs.io'
-        };
+    // If no API key provided in args, try to get it from settings or prompt user
+    let finalApiKey = apiKeyInput;
+    if (!finalApiKey) {
+        finalApiKey = await getApiKey(context) || '';
+        if (!finalApiKey) {
+            return {
+                success: false,
+                error: 'API key is required to enable TTS. Get one at https://elevenlabs.io'
+            };
+        }
     }
 
     // Update configuration
-    apiKey = apiKeyInput;
+    apiKey = finalApiKey;
     voiceId = voiceIdInput;
     modelId = modelIdInput;
     hookEnabled = true;
 
-    // Save configuration
-    const configPath = path.join(os.homedir(), '.clanker', 'elevenlabs-config.json');
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON.stringify({
+    // Save configuration to settings.json
+    await saveToolSettings({
         apiKey,
         voiceId,
         modelId,
         enabled: true,
         autoPlay
-    }, null, 2));
+    });
 
     // Install the hook into Clanker
     await installHook(context);
@@ -199,15 +218,11 @@ async function disableHook(context: ToolContext): Promise<any> {
     hookEnabled = false;
 
     // Update saved configuration
-    const configPath = path.join(os.homedir(), '.clanker', 'elevenlabs-config.json');
-    try {
-        const config = await fs.readFile(configPath, 'utf-8');
-        const parsed = JSON.parse(config);
-        parsed.enabled = false;
-        await fs.writeFile(configPath, JSON.stringify(parsed, null, 2));
-    } catch {
-        // Config doesn't exist
-    }
+    const settings = await loadToolSettings() || {};
+    await saveToolSettings({
+        ...settings,
+        enabled: false
+    });
 
     // Remove the hook
     await removeHook(context);
@@ -222,16 +237,8 @@ async function disableHook(context: ToolContext): Promise<any> {
 
 // Get current status
 async function getStatus(context: ToolContext): Promise<any> {
-    const configPath = path.join(os.homedir(), '.clanker', 'elevenlabs-config.json');
-    let config: any = {};
+    const config = await loadToolSettings() || {};
     
-    try {
-        const configData = await fs.readFile(configPath, 'utf-8');
-        config = JSON.parse(configData);
-    } catch {
-        // No config exists
-    }
-
     const status = config.enabled ? 'enabled' : 'disabled';
     const hasApiKey = !!config.apiKey;
 
@@ -256,10 +263,12 @@ async function getStatus(context: ToolContext): Promise<any> {
 
 // Test TTS functionality
 async function testTTS(text: string, autoPlay: boolean, context: ToolContext): Promise<any> {
-    if (!apiKey) {
+    // Ensure we have an API key
+    const currentApiKey = await getApiKey(context);
+    if (!currentApiKey) {
         return {
             success: false,
-            error: 'API key not configured. Run with action="enable" first.'
+            error: 'API key not configured. Run with action="enable" first or provide your API key.'
         };
     }
 
@@ -288,7 +297,9 @@ async function testTTS(text: string, autoPlay: boolean, context: ToolContext): P
 
 // Generate speech using ElevenLabs API
 async function generateSpeech(text: string, context: ToolContext): Promise<string> {
-    if (!apiKey) {
+    // Ensure we have an API key
+    const currentApiKey = await getApiKey(context);
+    if (!currentApiKey) {
         throw new Error('API key not configured');
     }
 
@@ -324,7 +335,7 @@ async function generateSpeech(text: string, context: ToolContext): Promise<strin
         headers: {
             'Accept': 'audio/mpeg',
             'Content-Type': 'application/json',
-            'xi-api-key': apiKey
+            'xi-api-key': currentApiKey
         },
         body: JSON.stringify({
             text: cleanText,
@@ -383,46 +394,142 @@ async function playAudio(audioFile: string, context: ToolContext): Promise<void>
     await execAsync(command);
 }
 
-// Install the hook into Clanker
+// Install the hook into Clanker using the new hook system
 async function installHook(context: ToolContext): Promise<void> {
-    // Create a hook script that Clanker will execute
-    const hookScript = `
-// ElevenLabs TTS Hook
-if (typeof global.clankerHooks === 'undefined') {
-    global.clankerHooks = {};
-}
-
-global.clankerHooks.elevenlabsTTS = {
-    onMessage: async (message) => {
-        try {
-            const { exec } = require('child_process');
-            const { promisify } = require('util');
-            const execAsync = promisify(exec);
-            
-            // Call the elevenlabs_tts tool to generate speech
-            await execAsync(\`clanker -p "use elevenlabs_tts to test '\${message.replace(/'/g, "\\'")}' "\`);
-        } catch (error) {
-            console.error('TTS hook error:', error);
-        }
+    if (!context.hooks) {
+        throw new Error('Hook system not available in context');
     }
-};
-`;
-
-    // Write hook to Clanker hooks directory
-    const hooksDir = path.join(os.homedir(), '.clanker', 'hooks');
-    await fs.mkdir(hooksDir, { recursive: true });
-    await fs.writeFile(path.join(hooksDir, 'elevenlabs-tts.js'), hookScript);
-
-    context.logger?.info('TTS hook installed');
+    
+    // Register a PostMessage hook to speak all assistant messages
+    context.hooks.register({
+        id: 'elevenlabs-tts-assistant',
+        name: 'ElevenLabs TTS for Assistant',
+        description: 'Speaks assistant messages using ElevenLabs TTS',
+        event: 'PostMessage',
+        matcher: (role: string) => role === 'assistant',
+        priority: 10,
+        handler: async (input: any, hookContext: any) => {
+            // Only process assistant messages
+            if (input.role !== 'assistant' || !input.content) {
+                return { continue: true };
+            }
+            
+            try {
+                // Generate speech for the message
+                const audioFile = await generateSpeech(input.content, context);
+                
+                // Get autoPlay setting
+                const settings = await loadToolSettings();
+                if (settings?.autoPlay !== false) {
+                    await playAudio(audioFile, context);
+                }
+                
+                return {
+                    continue: true,
+                    data: {
+                        audioFile,
+                        played: settings?.autoPlay !== false
+                    }
+                };
+            } catch (error) {
+                context.logger?.error('TTS generation failed:', error);
+                return {
+                    continue: true,
+                    error: error instanceof Error ? error.message : String(error)
+                };
+            }
+        },
+        aiDescription: 'Converts assistant text responses to speech using ElevenLabs API',
+        capabilities: ['audio-generation', 'text-to-speech']
+    });
+    
+    context.logger?.info('TTS hook registered with new hook system');
 }
 
 // Remove the hook from Clanker
 async function removeHook(context: ToolContext): Promise<void> {
-    const hookPath = path.join(os.homedir(), '.clanker', 'hooks', 'elevenlabs-tts.js');
-    try {
-        await fs.unlink(hookPath);
-        context.logger?.info('TTS hook removed');
-    } catch {
-        // Hook file doesn't exist
+    if (context.hooks) {
+        context.hooks.unregister('elevenlabs-tts-assistant');
+        context.logger?.info('TTS hook unregistered');
     }
+}
+
+// Helper functions for managing tool settings in .clanker/settings.json
+async function loadToolSettings(): Promise<ElevenLabsSettings | null> {
+    try {
+        await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+        const settingsData = await fs.readFile(settingsPath, 'utf-8');
+        const settings = JSON.parse(settingsData);
+        
+        // Extract elevenlabs-specific settings from tools section
+        return settings.tools?.elevenlabs || null;
+    } catch {
+        // Settings file doesn't exist yet
+        return null;
+    }
+}
+
+async function saveToolSettings(toolSettings: ElevenLabsSettings): Promise<void> {
+    try {
+        await fs.mkdir(path.dirname(settingsPath), { recursive: true });
+        
+        let settings: any = {};
+        try {
+            const existingData = await fs.readFile(settingsPath, 'utf-8');
+            settings = JSON.parse(existingData);
+        } catch {
+            // File doesn't exist, start with empty object
+        }
+        
+        // Ensure tools section exists
+        if (!settings.tools) {
+            settings.tools = {};
+        }
+        
+        // Update elevenlabs settings
+        settings.tools.elevenlabs = toolSettings;
+        
+        // Save back to file
+        await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
+    } catch (error) {
+        throw new Error(`Failed to save settings: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+
+// Get API key, prompting user if necessary
+async function getApiKey(context: ToolContext): Promise<string | null> {
+    // First check if API key is in memory
+    if (apiKey) {
+        return apiKey;
+    }
+    
+    // Try to load from settings
+    const settings = await loadToolSettings();
+    if (settings?.apiKey) {
+        apiKey = settings.apiKey;
+        return apiKey;
+    }
+    
+    // If no API key, try to prompt user using input tool
+    try {
+        const result = await context.registry.execute('input', {
+            prompt: 'Please enter your ElevenLabs API key:',
+            title: 'ElevenLabs API Key Required',
+            password: true
+        });
+        
+        if (result.success && result.output) {
+            // Save the API key
+            apiKey = result.output as string;
+            await saveToolSettings({
+                ...settings,
+                apiKey
+            });
+            return apiKey;
+        }
+    } catch (error) {
+        context.logger?.error(`Failed to get API key via input tool: ${error}`);
+    }
+    
+    return null;
 }
