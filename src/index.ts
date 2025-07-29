@@ -101,7 +101,7 @@ export default createTool()
     // Arguments
     .stringArg('action', 'Action to perform: enable, disable, or status', {
         required: true,
-        enum: ['enable', 'disable', 'status', 'test']
+        enum: ['enable', 'disable', 'status']
     })
     
     .stringArg('api_key', 'ElevenLabs API key (will prompt if not provided)', {
@@ -177,8 +177,6 @@ export default createTool()
             case 'status':
                 return await getStatus(context);
             
-            case 'test':
-                return await testTTS('Hello! This is a test of the ElevenLabs text-to-speech integration.', auto_play !== undefined ? auto_play as boolean : true, context);
             
             case 'speak_message':
                 // Action called by the hook system
@@ -215,13 +213,6 @@ export default createTool()
                 api_key: 'your-api-key-here'
             },
             result: 'TTS hook enabled successfully'
-        },
-        {
-            description: 'Test TTS functionality',
-            arguments: {
-                action: 'test'
-            },
-            result: 'Plays test message (prompts for API key if needed)'
         },
         {
             description: 'Disable TTS hook',
@@ -382,47 +373,6 @@ async function getStatus(context: ToolContext): Promise<any> {
     };
 }
 
-// Test TTS functionality
-async function testTTS(text: string, autoPlay: boolean, context: ToolContext): Promise<any> {
-    // Ensure we have an API key
-    const currentApiKey = await getApiKey(context);
-    if (!currentApiKey) {
-        return {
-            success: false,
-            error: 'API key not configured. Run with action="enable" first or provide your API key.'
-        };
-    }
-
-    try {
-        if (autoPlay) {
-            context.logger?.info('Testing streaming TTS...');
-            await streamSpeech(text, context);
-            return {
-                success: true,
-                output: `Test speech streamed and played successfully!`,
-                data: {
-                    played: true,
-                    streamed: true
-                }
-            };
-        } else {
-            const audioFile = await generateSpeech(text, context);
-            return {
-                success: true,
-                output: `Test speech generated successfully!\nAudio file: ${audioFile}`,
-                data: {
-                    audioFile,
-                    played: false
-                }
-            };
-        }
-    } catch (error) {
-        return {
-            success: false,
-            error: `TTS test failed: ${error instanceof Error ? error.message : String(error)}`
-        };
-    }
-}
 
 // Generate speech using ElevenLabs API (non-streaming, for cache)
 async function generateSpeech(text: string, context: ToolContext): Promise<string> {
@@ -734,8 +684,7 @@ async function installHook(context: ToolContext): Promise<void> {
     context.logger?.info('Installing ElevenLabs TTS hook...');
     
     // Register a PostMessage hook to speak all assistant messages
-    context.hooks.register({
-        id: 'elevenlabs-tts-assistant',
+    const hookId = context.hooks.register({
         name: 'ElevenLabs TTS for Assistant',
         description: 'Speaks assistant messages using ElevenLabs TTS',
         event: 'PostMessage',
@@ -758,11 +707,18 @@ async function installHook(context: ToolContext): Promise<void> {
         capabilities: ['audio-generation', 'text-to-speech']
     });
     
+    // Store the hook ID in shared state so we can unregister it later
+    const ttsState = context.sharedState.namespace('elevenlabs-tts');
+    ttsState.set('hookId', hookId);
+    
+    // Note: We cannot persist the hook because it has a function handler, not a module path
+    // The hook will only work during the current session
+    context.logger?.warn('Note: TTS hook is registered for this session only. To make it persistent, configure it in your .clanker/settings.json file.');
+    
     // Verify hook was registered
     const registeredHooks = context.hooks.getHooks('PostMessage');
     context.logger?.info(`Registered PostMessage hooks: ${registeredHooks.map((h: any) => h.id).join(', ')}`);
-    
-    context.logger?.info('TTS hook registered with new hook system');
+    context.logger?.info(`TTS hook registered with ID: ${hookId}`);
 }
 
 // Handle TTS hook execution
@@ -810,8 +766,16 @@ async function handleTTSHook(input: any, context: ToolContext): Promise<any> {
 // Remove the hook from Clanker
 async function removeHook(context: ToolContext): Promise<void> {
     if (context.hooks) {
-        context.hooks.unregister('elevenlabs-tts-assistant');
-        context.logger?.info('TTS hook unregistered');
+        // Get the hook ID from shared state
+        const ttsState = context.sharedState.namespace('elevenlabs-tts');
+        const hookId = ttsState.get('hookId') as string | undefined;
+        if (hookId) {
+            context.hooks.unregister(hookId);
+            ttsState.delete('hookId');
+            context.logger?.info(`TTS hook ${hookId} unregistered`);
+        } else {
+            context.logger?.warn('No hook ID found in shared state');
+        }
     }
 }
 
