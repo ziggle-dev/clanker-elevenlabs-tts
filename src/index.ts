@@ -15,6 +15,9 @@ import * as crypto from 'crypto';
 
 const execAsync = promisify(exec);
 
+import { spawn } from 'child_process';
+import { Readable } from 'stream';
+
 // Settings interface for ElevenLabs TTS
 interface ElevenLabsSettings {
     apiKey?: string;
@@ -90,7 +93,7 @@ const AVAILABLE_VOICES = [
 export default createTool()
     .id('elevenlabs_tts')
     .name('ElevenLabs TTS')
-    .description('ElevenLabs text-to-speech integration that hooks into Clanker to playback all messages. Features interactive model and voice selection using dropdown menus. Requires the input tool v1.1.0+ for prompts.')
+    .description('ElevenLabs text-to-speech with real-time streaming audio playback. Auto-plays Clanker messages as they stream, with smart defaults and persistent settings. Requires input tool v1.1.0+.')
     .category(ToolCategory.Utility)
     .capabilities(ToolCapability.NetworkAccess, ToolCapability.SystemExecute)
     .tags('elevenlabs', 'tts', 'text-to-speech', 'audio', 'voice', 'hook')
@@ -123,6 +126,8 @@ export default createTool()
 
     // Initialize
     .onInitialize(async (context: ToolContext) => {
+        context.logger?.info('ELEVENLABS TTS INITIALIZING...');
+        
         // Set up output directory for audio files
         outputDir = path.join(os.tmpdir(), 'clanker-tts');
         await fs.mkdir(outputDir, { recursive: true });
@@ -134,12 +139,28 @@ export default createTool()
         
         // Load saved configuration from settings.json
         const settings = await loadToolSettings();
+        context.logger?.info('Loaded settings:', JSON.stringify(settings));
+        
         if (settings) {
             if (settings.apiKey) apiKey = settings.apiKey;
             if (settings.voiceId) voiceId = settings.voiceId;
             if (settings.modelId) modelId = settings.modelId;
-            if (settings.enabled) hookEnabled = settings.enabled;
+            if (settings.enabled) {
+                hookEnabled = settings.enabled;
+                // If TTS is enabled in settings, install the hook
+                if (hookEnabled && settings.apiKey) {
+                    try {
+                        context.logger?.info('AUTO-INSTALLING HOOK because enabled=true in settings');
+                        await installHook(context);
+                        context.logger?.info('ElevenLabs TTS hook auto-enabled from settings');
+                    } catch (error) {
+                        context.logger?.error('Failed to auto-enable TTS hook:', error);
+                    }
+                }
+            }
         }
+        
+        context.logger?.info('ELEVENLABS TTS INITIALIZATION COMPLETE');
     })
 
     // Execute
@@ -148,7 +169,7 @@ export default createTool()
 
         switch (action) {
             case 'enable':
-                return await enableHook(api_key as string, voice_id as string, model_id as string, auto_play as boolean, context);
+                return await enableHook(api_key as string || undefined, voice_id as string || undefined, model_id as string || undefined, auto_play !== undefined ? auto_play as boolean : true, context);
             
             case 'disable':
                 return await disableHook(context);
@@ -157,7 +178,18 @@ export default createTool()
                 return await getStatus(context);
             
             case 'test':
-                return await testTTS('Hello! This is a test of the ElevenLabs text-to-speech integration.', auto_play as boolean, context);
+                return await testTTS('Hello! This is a test of the ElevenLabs text-to-speech integration.', auto_play !== undefined ? auto_play as boolean : true, context);
+            
+            case 'speak_message':
+                // Action called by the hook system
+                const { content, role } = args as { content?: string; role?: string };
+                if (role !== 'assistant' || !content) {
+                    return {
+                        success: true,
+                        output: 'Skipped non-assistant message'
+                    };
+                }
+                return await handleTTSHook({ content, role }, context);
             
             default:
                 return {
@@ -211,10 +243,10 @@ export default createTool()
 
 // Enable the TTS hook
 async function enableHook(
-    apiKeyInput: string, 
-    voiceIdInput: string, 
-    modelIdInput: string, 
-    autoPlay: boolean,
+    apiKeyInput: string | undefined, 
+    voiceIdInput: string | undefined, 
+    modelIdInput: string | undefined, 
+    autoPlay: boolean | undefined,
     context: ToolContext
 ): Promise<any> {
     // If no API key provided in args, try to get it from settings or prompt user
@@ -229,27 +261,31 @@ async function enableHook(
         }
     }
 
-    // If no model provided, prompt for selection
-    let finalModelId = modelIdInput;
+    // If no model provided, use default or prompt for selection
+    let finalModelId = modelIdInput || modelId;
     if (!finalModelId) {
-        finalModelId = await selectModel(context);
-        if (!finalModelId) {
-            return {
-                success: false,
-                error: 'Model selection cancelled'
-            };
+        // Try to use saved model first, otherwise use default
+        const savedSettings = await loadToolSettings();
+        if (savedSettings?.modelId) {
+            finalModelId = savedSettings.modelId;
+        } else {
+            // Default to the latest/fastest model
+            finalModelId = 'eleven_turbo_v2_5';
+            context.logger?.info('Using default model: Eleven Turbo v2.5');
         }
     }
 
-    // If no voice provided, prompt for selection  
-    let finalVoiceId = voiceIdInput;
+    // If no voice provided, use default or prompt for selection  
+    let finalVoiceId = voiceIdInput || voiceId;
     if (!finalVoiceId) {
-        finalVoiceId = await selectVoice(context);
-        if (!finalVoiceId) {
-            return {
-                success: false,
-                error: 'Voice selection cancelled'
-            };
+        // Try to use saved voice first, otherwise use default
+        const savedSettings = await loadToolSettings();
+        if (savedSettings?.voiceId) {
+            finalVoiceId = savedSettings.voiceId;
+        } else {
+            // Default to Sarah voice
+            finalVoiceId = 'EXAVITQu4vr4xnSDxMaL';
+            context.logger?.info('Using default voice: Sarah');
         }
     }
 
@@ -258,6 +294,9 @@ async function enableHook(
     voiceId = finalVoiceId;
     modelId = finalModelId;
     hookEnabled = true;
+    
+    // Use default true for autoPlay if not specified
+    const finalAutoPlay = autoPlay !== undefined ? autoPlay : true;
 
     // Save configuration to settings.json
     await saveToolSettings({
@@ -265,7 +304,7 @@ async function enableHook(
         voiceId,
         modelId,
         enabled: true,
-        autoPlay
+        autoPlay: finalAutoPlay
     });
 
     // Install the hook into Clanker
@@ -278,13 +317,13 @@ async function enableHook(
         output: `TTS hook enabled successfully!\n` +
                 `Voice ID: ${voiceId}\n` +
                 `Model: ${modelId}\n` +
-                `Auto-play: ${autoPlay ? 'enabled' : 'disabled'}\n\n` +
+                `Auto-play: ${finalAutoPlay ? 'enabled' : 'disabled'}\n\n` +
                 `All Clanker messages will now be converted to speech.`,
         data: {
             enabled: true,
             voiceId,
             modelId,
-            autoPlay
+            autoPlay: finalAutoPlay
         }
     };
 }
@@ -355,20 +394,28 @@ async function testTTS(text: string, autoPlay: boolean, context: ToolContext): P
     }
 
     try {
-        const audioFile = await generateSpeech(text, context);
-        
         if (autoPlay) {
-            await playAudio(audioFile, context);
+            context.logger?.info('Testing streaming TTS...');
+            await streamSpeech(text, context);
+            return {
+                success: true,
+                output: `Test speech streamed and played successfully!`,
+                data: {
+                    played: true,
+                    streamed: true
+                }
+            };
+        } else {
+            const audioFile = await generateSpeech(text, context);
+            return {
+                success: true,
+                output: `Test speech generated successfully!\nAudio file: ${audioFile}`,
+                data: {
+                    audioFile,
+                    played: false
+                }
+            };
         }
-
-        return {
-            success: true,
-            output: `Test speech generated successfully!\nAudio file: ${audioFile}`,
-            data: {
-                audioFile,
-                played: autoPlay
-            }
-        };
     } catch (error) {
         return {
             success: false,
@@ -377,7 +424,7 @@ async function testTTS(text: string, autoPlay: boolean, context: ToolContext): P
     }
 }
 
-// Generate speech using ElevenLabs API
+// Generate speech using ElevenLabs API (non-streaming, for cache)
 async function generateSpeech(text: string, context: ToolContext): Promise<string> {
     // Ensure we have an API key
     const currentApiKey = await getApiKey(context);
@@ -442,45 +489,249 @@ async function generateSpeech(text: string, context: ToolContext): Promise<strin
     return audioFile;
 }
 
+// Stream speech using ElevenLabs API with real-time playback
+async function streamSpeech(text: string, context: ToolContext): Promise<void> {
+    // Ensure we have an API key
+    const currentApiKey = await getApiKey(context);
+    if (!currentApiKey) {
+        throw new Error('API key not configured');
+    }
+
+    // Clean text for TTS
+    const cleanText = text
+        .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+        .replace(/[*_~`#]/g, '') // Remove markdown formatting
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Convert links to text
+        .trim();
+
+    if (!cleanText) {
+        context.logger?.debug('No speakable text after cleaning');
+        return;
+    }
+
+    context.logger?.info('Starting streaming TTS...');
+
+    // Call ElevenLabs streaming API
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
+        method: 'POST',
+        headers: {
+            'Accept': 'audio/mpeg',
+            'Content-Type': 'application/json',
+            'xi-api-key': currentApiKey
+        },
+        body: JSON.stringify({
+            text: cleanText,
+            model_id: modelId,
+            voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75
+            },
+            optimize_streaming_latency: 3 // Optimize for lower latency
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`ElevenLabs streaming API error: ${response.status} - ${error}`);
+    }
+
+    // Stream audio playback
+    await streamAudioPlayback(response, context);
+}
+
+// Stream to temp file and play (fallback for systems without streaming support)
+async function streamToTempFileAndPlay(response: Response, context: ToolContext): Promise<void> {
+    const tempFile = path.join(outputDir, `stream_${Date.now()}.mp3`);
+    
+    try {
+        // Save stream to temp file
+        const buffer = Buffer.from(await response.arrayBuffer());
+        await fs.writeFile(tempFile, buffer);
+        
+        // Play the temp file
+        await playAudio(tempFile, context);
+        
+        // Clean up temp file
+        await fs.unlink(tempFile).catch(() => {});
+    } catch (error) {
+        context.logger?.error('Fallback playback failed:', error);
+        throw error;
+    }
+}
+
+// Stream audio playback in real-time
+async function streamAudioPlayback(response: Response, context: ToolContext): Promise<void> {
+    const platform = os.platform();
+    let playerProcess: any;
+
+    context.logger?.info(`Starting streaming audio playback on ${platform}`);
+
+    try {
+        // Get the appropriate player command
+        switch (platform) {
+            case 'darwin': // macOS
+                // Try different players that support streaming
+                try {
+                    await execAsync('which mpg123');
+                    playerProcess = spawn('mpg123', ['-q', '-']);
+                    context.logger?.debug('Using mpg123 for streaming playback');
+                } catch {
+                    try {
+                        await execAsync('which play'); // sox
+                        playerProcess = spawn('play', ['-q', '-t', 'mp3', '-']);
+                        context.logger?.debug('Using sox play for streaming playback');
+                    } catch {
+                        try {
+                            await execAsync('which ffplay');
+                            playerProcess = spawn('ffplay', ['-nodisp', '-autoexit', '-loglevel', 'quiet', '-i', 'pipe:0']);
+                            context.logger?.debug('Using ffplay for streaming playback');
+                        } catch {
+                            // Fall back to non-streaming
+                            context.logger?.warn('No streaming audio player found (mpg123, sox, or ffplay). Install one with: brew install mpg123');
+                            return await streamToTempFileAndPlay(response, context);
+                        }
+                    }
+                }
+                break;
+            case 'linux':
+                // Try to find the best player
+                try {
+                    await execAsync('which mpg123');
+                    playerProcess = spawn('mpg123', ['-']);
+                } catch {
+                    try {
+                        await execAsync('which play');
+                        playerProcess = spawn('play', ['-t', 'mp3', '-']);
+                    } catch {
+                        try {
+                            await execAsync('which ffplay');
+                            playerProcess = spawn('ffplay', ['-nodisp', '-autoexit', '-i', 'pipe:0']);
+                        } catch {
+                            throw new Error('No suitable audio player found (mpg123, play, or ffplay)');
+                        }
+                    }
+                }
+                break;
+            case 'win32': // Windows
+                // Use ffplay on Windows (commonly available)
+                playerProcess = spawn('ffplay', ['-nodisp', '-autoexit', '-i', 'pipe:0']);
+                break;
+            default:
+                throw new Error(`Unsupported platform: ${platform}`);
+        }
+
+        // Handle player errors
+        playerProcess.on('error', (error: Error) => {
+            context.logger?.error(`Audio player error: ${error.message}`);
+        });
+
+        playerProcess.stderr.on('data', (data: Buffer) => {
+            context.logger?.debug(`Audio player stderr: ${data.toString()}`);
+        });
+
+        // Stream the response body to the player
+        if (response.body) {
+            const reader = response.body.getReader();
+            
+            const processChunk = async () => {
+                try {
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        
+                        // Write chunk to player stdin
+                        if (!playerProcess.stdin.destroyed) {
+                            playerProcess.stdin.write(value);
+                        }
+                    }
+                } catch (error) {
+                    context.logger?.error('Error reading stream:', error);
+                } finally {
+                    playerProcess.stdin.end();
+                }
+            };
+
+            await processChunk();
+            
+            // Wait for player to finish
+            await new Promise((resolve, reject) => {
+                playerProcess.on('close', (code: number) => {
+                    if (code === 0) {
+                        context.logger?.info('Streaming playback completed successfully');
+                        resolve(undefined);
+                    } else {
+                        reject(new Error(`Player exited with code ${code}`));
+                    }
+                });
+            });
+        }
+    } catch (error) {
+        context.logger?.error(`Streaming playback failed: ${error instanceof Error ? error.message : String(error)}`);
+        throw error;
+    }
+}
+
 // Play audio file
 async function playAudio(audioFile: string, context: ToolContext): Promise<void> {
     const platform = os.platform();
     let command: string;
 
-    switch (platform) {
-        case 'darwin': // macOS
-            command = `afplay "${audioFile}"`;
-            break;
-        case 'linux':
-            // Try multiple players in order of preference
-            try {
-                await execAsync('which mpg123');
-                command = `mpg123 -q "${audioFile}"`;
-            } catch {
-                try {
-                    await execAsync('which play');
-                    command = `play -q "${audioFile}"`;
-                } catch {
-                    command = `aplay "${audioFile}"`;
-                }
-            }
-            break;
-        case 'win32': // Windows
-            command = `powershell -c "(New-Object Media.SoundPlayer '${audioFile}').PlaySync()"`;
-            break;
-        default:
-            throw new Error(`Unsupported platform: ${platform}`);
-    }
+    context.logger?.info(`Attempting to play audio on ${platform}: ${audioFile}`);
 
-    context.logger?.debug(`Playing audio with: ${command}`);
-    await execAsync(command);
+    try {
+        switch (platform) {
+            case 'darwin': // macOS
+                command = `afplay "${audioFile}"`;
+                break;
+            case 'linux':
+                // Try multiple players in order of preference
+                try {
+                    await execAsync('which mpg123');
+                    command = `mpg123 -q "${audioFile}"`;
+                } catch {
+                    try {
+                        await execAsync('which play');
+                        command = `play -q "${audioFile}"`;
+                    } catch {
+                        try {
+                            await execAsync('which paplay');
+                            command = `paplay "${audioFile}"`;
+                        } catch {
+                            command = `aplay "${audioFile}"`;
+                        }
+                    }
+                }
+                break;
+            case 'win32': // Windows
+                // Use PowerShell to play audio
+                const escapedPath = audioFile.replace(/'/g, "''")
+                command = `powershell -NoProfile -Command "Add-Type -AssemblyName System.Media; $player = New-Object System.Media.SoundPlayer('${escapedPath}'); $player.PlaySync()"`;
+                break;
+            default:
+                throw new Error(`Unsupported platform: ${platform}`);
+        }
+
+        context.logger?.debug(`Playing audio with command: ${command}`);
+        const result = await execAsync(command);
+        context.logger?.info('Audio playback completed successfully');
+        
+        if (result.stderr) {
+            context.logger?.warn(`Audio playback stderr: ${result.stderr}`);
+        }
+    } catch (error) {
+        context.logger?.error(`Failed to play audio: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(`Audio playback failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
 }
 
 // Install the hook into Clanker using the new hook system
 async function installHook(context: ToolContext): Promise<void> {
     if (!context.hooks) {
+        context.logger?.error('Hook system not available in context');
         throw new Error('Hook system not available in context');
     }
+    
+    context.logger?.info('Installing ElevenLabs TTS hook...');
     
     // Register a PostMessage hook to speak all assistant messages
     context.hooks.register({
@@ -491,41 +742,69 @@ async function installHook(context: ToolContext): Promise<void> {
         matcher: (role: string) => role === 'assistant',
         priority: 10,
         handler: async (input: any, hookContext: any) => {
+            context.logger?.info(`TTS HOOK TRIGGERED! Message role: ${input.role}, has content: ${!!input.content}`);
+            context.logger?.info(`Hook input:`, JSON.stringify(input));
+            
             // Only process assistant messages
             if (input.role !== 'assistant' || !input.content) {
+                context.logger?.info('Skipping non-assistant message or no content');
                 return { continue: true };
             }
             
-            try {
-                // Generate speech for the message
-                const audioFile = await generateSpeech(input.content, context);
-                
-                // Get autoPlay setting
-                const settings = await loadToolSettings();
-                if (settings?.autoPlay !== false) {
-                    await playAudio(audioFile, context);
-                }
-                
-                return {
-                    continue: true,
-                    data: {
-                        audioFile,
-                        played: settings?.autoPlay !== false
-                    }
-                };
-            } catch (error) {
-                context.logger?.error('TTS generation failed:', error);
-                return {
-                    continue: true,
-                    error: error instanceof Error ? error.message : String(error)
-                };
-            }
+            context.logger?.info('PROCESSING ASSISTANT MESSAGE FOR TTS!');
+            return await handleTTSHook(input, context);
         },
         aiDescription: 'Converts assistant text responses to speech using ElevenLabs API',
         capabilities: ['audio-generation', 'text-to-speech']
     });
     
+    // Verify hook was registered
+    const registeredHooks = context.hooks.getHooks('PostMessage');
+    context.logger?.info(`Registered PostMessage hooks: ${registeredHooks.map((h: any) => h.id).join(', ')}`);
+    
     context.logger?.info('TTS hook registered with new hook system');
+}
+
+// Handle TTS hook execution
+async function handleTTSHook(input: any, context: ToolContext): Promise<any> {
+    context.logger?.info('Processing assistant message for TTS');
+    
+    try {
+        // Get autoPlay setting
+        const settings = await loadToolSettings();
+        context.logger?.debug(`TTS settings - autoPlay: ${settings?.autoPlay}`);
+        
+        if (settings?.autoPlay !== false) {
+            context.logger?.info('Streaming TTS for message...');
+            // Use streaming for real-time playback
+            await streamSpeech(input.content, context);
+        } else {
+            context.logger?.info('Auto-play disabled, generating audio file only');
+            // Generate non-streaming audio file
+            const audioFile = await generateSpeech(input.content, context);
+            return {
+                continue: true,
+                data: {
+                    audioFile,
+                    played: false
+                }
+            };
+        }
+        
+        return {
+            continue: true,
+            data: {
+                played: true,
+                streamed: true
+            }
+        };
+    } catch (error) {
+        context.logger?.error('TTS streaming or generation failed:', error);
+        return {
+            continue: true,
+            error: error instanceof Error ? error.message : String(error)
+        };
+    }
 }
 
 // Remove the hook from Clanker

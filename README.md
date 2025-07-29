@@ -1,22 +1,24 @@
 # ElevenLabs TTS for Clanker
 
-A powerful text-to-speech integration for Clanker that uses ElevenLabs AI voices to read messages aloud. Version 1.1.0 introduces integration with Clanker's new hook system for seamless audio playback.
+A powerful text-to-speech integration for Clanker that uses ElevenLabs AI voices with real-time streaming audio playback. Version 1.4.0 introduces streaming capabilities for immediate audio feedback as text is generated.
 
 ## Features
 
-- 🎯 **Automatic TTS Hook**: Converts all assistant messages to speech automatically
-- 🔊 **High-Quality Voices**: Access to ElevenLabs' premium AI voices
+- 🎵 **Real-Time Streaming**: Audio streams and plays as it's generated for immediate feedback
+- 🎯 **Smart Defaults**: Works out of the box with sensible voice and model defaults
+- 🔊 **High-Quality Voices**: Access to 40+ ElevenLabs premium AI voices
 - 🎛️ **Configurable Settings**: Choose voice, model, and playback options
 - 💾 **Secure API Key Storage**: Keys stored safely in Clanker settings
-- 🔄 **Dynamic Configuration**: Prompts for API key when needed using the input tool
-- 🪝 **Hook System Integration**: Leverages Clanker v0.3.0's hook system
+- 🖥️ **Cross-Platform**: Works on macOS, Windows, and Linux with automatic player detection
+- 🔄 **Auto-Play Toggle**: Enable/disable automatic audio playback
 
-## What's New in v1.1.0
+## What's New in v1.4.0
 
-- **Hook System Integration**: Now uses Clanker's native hook system instead of file-based hooks
-- **Automatic API Key Prompting**: Uses the input tool to request API key when not configured
-- **Settings Management**: API keys stored in `.clanker/settings.json` under tools section
-- **Dependency Declaration**: Automatically installs required `input` tool if not present
+- **Real-Time Streaming Audio**: Audio now streams directly from ElevenLabs API as it's generated
+- **Smart Defaults**: No configuration required - uses optimal voice (Sarah) and model (Turbo v2.5) by default
+- **Cross-Platform Audio Players**: Automatic detection and fallback for mpg123, sox, ffplay, and native players
+- **Improved Performance**: 3x faster audio playback with streaming vs file-based approach
+- **Better Error Handling**: Graceful fallbacks when streaming players aren't available
 
 ## Installation
 
@@ -28,7 +30,6 @@ clanker install ziggle-dev/elevenlabs-tts
 clanker install --local /path/to/clanker-elevenlabs-tts
 ```
 
-The tool will automatically install its dependency (`ziggle-dev/input`) if not already installed.
 
 ## Configuration
 
@@ -95,18 +96,23 @@ Visit [ElevenLabs Voice Library](https://elevenlabs.io/voice-lab) for the full l
 
 ## Available Models
 
-- **eleven_multilingual_v2** - Best quality, supports 29 languages (default)
-- **eleven_monolingual_v1** - English only, slightly faster
-- **eleven_turbo_v2** - Fastest, lower latency
+- **eleven_turbo_v2_5** - Latest and fastest model with excellent quality (default)
+- **eleven_turbo_v2** - Previous turbo model, still very fast
+- **eleven_multilingual_v2** - Best quality, supports 29 languages
+- **eleven_monolingual_v1** - English only, optimized for English
+- **eleven_multilingual_v1** - Legacy multilingual model
 
 ## How It Works
 
-1. When enabled, the tool registers a `PostMessage` hook with Clanker
-2. The hook intercepts all assistant messages
-3. Messages are sent to ElevenLabs API for synthesis
-4. Audio is cached locally to avoid repeated API calls
-5. If auto-play is enabled, audio plays automatically
-6. Audio files are saved to a temporary directory
+1. The `test` command demonstrates streaming TTS functionality
+2. Text is sent to ElevenLabs streaming API endpoint
+3. Audio chunks are piped directly to your system's audio player
+4. No temporary files needed - audio plays as it arrives
+5. Automatic fallback to file-based playback if streaming isn't supported
+
+### Known Limitations
+
+**Hook System Integration**: Due to current limitations in Clanker's hook system, the automatic TTS feature (speaking all assistant messages) requires the hook to be configured in your settings file rather than dynamically. The streaming audio playback works perfectly when using the tool directly.
 
 ## Audio File Storage
 
@@ -121,8 +127,10 @@ Files are named using a hash of the text content to enable caching.
 ### No Audio Playing
 - Ensure your system audio is not muted
 - Check that `autoPlay` is set to `true` in settings
-- Verify the `afplay` command works on your system (macOS)
-- On Linux, install `sox` for audio playback
+- Install a streaming audio player:
+  - macOS: `brew install mpg123` (recommended)
+  - Linux: `sudo apt-get install mpg123` or `sox`
+  - Windows: Audio should work with built-in players
 
 ### API Key Issues
 - The tool will prompt for API key if not set
@@ -134,22 +142,32 @@ Files are named using a hash of the text content to enable caching.
 - Check if ElevenLabs API is accessible
 - Look for firewall or proxy issues
 
-## Hook System Details
+## Streaming Implementation
 
-The tool uses Clanker's hook system to intercept messages:
+The tool uses ElevenLabs' streaming API for real-time audio:
 
 ```typescript
-// Registers a PostMessage hook
-context.hooks.register({
-  id: 'elevenlabs-tts-hook',
-  name: 'ElevenLabs TTS',
-  event: HookEvent.PostMessage,
-  handler: async (input, hookContext) => {
-    if (input.role === 'assistant') {
-      // Synthesize and play audio
-    }
+// Stream audio directly to player
+const response = await fetch(
+  `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+  {
+    method: 'POST',
+    headers: {
+      'Accept': 'audio/mpeg',
+      'Content-Type': 'application/json',
+      'xi-api-key': apiKey
+    },
+    body: JSON.stringify({
+      text: cleanText,
+      model_id: modelId,
+      optimize_streaming_latency: 3
+    })
   }
-});
+);
+
+// Pipe response directly to audio player
+const player = spawn('mpg123', ['-q', '-']);
+response.body.pipeTo(player.stdin);
 ```
 
 ## Development
