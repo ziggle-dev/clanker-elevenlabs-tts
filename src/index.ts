@@ -28,9 +28,61 @@ interface ElevenLabsSettings {
 let hookEnabled = false;
 let apiKey: string | undefined;
 let voiceId: string = 'EXAVITQu4vr4xnSDxMaL'; // Default voice (Sarah)
-let modelId: string = 'eleven_monolingual_v1';
+let modelId: string = 'eleven_turbo_v2_5'; // Default to newest model
 let outputDir: string;
 let settingsPath: string;
+
+// Available models and voices
+const AVAILABLE_MODELS = [
+    { id: 'eleven_turbo_v2_5', name: 'Eleven Turbo v2.5 (Latest, fastest)' },
+    { id: 'eleven_turbo_v2', name: 'Eleven Turbo v2' },
+    { id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2' },
+    { id: 'eleven_monolingual_v1', name: 'Eleven Monolingual v1' },
+    { id: 'eleven_multilingual_v1', name: 'Eleven Multilingual v1' }
+];
+
+const AVAILABLE_VOICES = [
+    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
+    { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel' },
+    { id: '2EiwWnXFnvU5JabPnv8n', name: 'Clyde' },
+    { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi' },
+    { id: 'CYw3kZ02Hs0563khs1Fj', name: 'Dave' },
+    { id: 'D38z5RcWu1voky8WS1ja', name: 'Fin' },
+    { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella' },
+    { id: 'ErXwobaYiN019PkySvjV', name: 'Antoni' },
+    { id: 'GBv7mTt0atIp3Br8iCZE', name: 'Thomas' },
+    { id: 'IKne3meq5aSn9XLyUdCD', name: 'Charlie' },
+    { id: 'JBFqnCBsd6RMkjVDRZzb', name: 'George' },
+    { id: 'LcfcDJNUP1GQjkzn1xUU', name: 'Emily' },
+    { id: 'MF3mGyEYCl7XYWbV9V6O', name: 'Elli' },
+    { id: 'N2lVS1w4EtoT3dr4eOWO', name: 'Callum' },
+    { id: 'ODq5zmih8GrVes37Dizd', name: 'Patrick' },
+    { id: 'SOYHLrjzK2X1ezoPC6cr', name: 'Harry' },
+    { id: 'TX3LPaxmHKxFdv7VOQHJ', name: 'Liam' },
+    { id: 'ThT5KcBeYPX3keUQqHPh', name: 'Dorothy' },
+    { id: 'TxGEqnHWrfWFTfGW9XjX', name: 'Josh' },
+    { id: 'VR6AewLTigWG4xSOukaG', name: 'Arnold' },
+    { id: 'XB0fDUnXU5powFXDhCwa', name: 'Charlotte' },
+    { id: 'XrExE9yKIg1WjnnlVkGX', name: 'Alice' },
+    { id: 'Yko7PKHZNXotIFUBG7I9', name: 'Matilda' },
+    { id: 'ZQe5CZNOzWyzPSCn5a3c', name: 'James' },
+    { id: 'Zlb1dXrM653N07WRdFW3', name: 'Joseph' },
+    { id: 'bVMeCyTHy58xNoL34h3p', name: 'Jeremy' },
+    { id: 'flq6f7yk4E4fJM5XTYuZ', name: 'Michael' },
+    { id: 'g5CIjZEefAph4nQFvHAz', name: 'Ethan' },
+    { id: 'jBpfuIE2acCO8z3wKNLl', name: 'Gigi' },
+    { id: 'jsCqWAovK2LkecY7zXl4', name: 'Freya' },
+    { id: 'oWAxZDx7w5VEj9dCyTzz', name: 'Grace' },
+    { id: 'onwK4e9ZLuTAKqWW03F9', name: 'Daniel' },
+    { id: 'pMsXgVXv3BLzUgSXRplE', name: 'Serena' },
+    { id: 'pNInz6obpgDQGcFmaJgB', name: 'Adam' },
+    { id: 't0jbNlBVZ17f02VDIeMI', name: 'Jessie' },
+    { id: 'wViXBPUzp2ZZixB1xQuM', name: 'Glinda' },
+    { id: 'yoZ06aMxZJJ28mfd3POQ', name: 'Sam' },
+    { id: 'z9fAnlkpzviPz146aGWa', name: 'Nicole' },
+    { id: 'zcAOhNBS3c14rBihAFp1', name: 'Giovanni' },
+    { id: 'zrHiDhphv9ZnVXBqCLjz', name: 'Mimi' }
+];
 
 /**
  * ElevenLabs TTS tool - Installs a hook to playback all messages
@@ -38,7 +90,7 @@ let settingsPath: string;
 export default createTool()
     .id('elevenlabs_tts')
     .name('ElevenLabs TTS')
-    .description('ElevenLabs text-to-speech integration that hooks into Clanker to playback all messages. Requires the input tool for API key prompting.')
+    .description('ElevenLabs text-to-speech integration that hooks into Clanker to playback all messages. Features interactive model and voice selection using dropdown menus. Requires the input tool v1.1.0+ for prompts.')
     .category(ToolCategory.Utility)
     .capabilities(ToolCapability.NetworkAccess, ToolCapability.SystemExecute)
     .tags('elevenlabs', 'tts', 'text-to-speech', 'audio', 'voice', 'hook')
@@ -60,8 +112,8 @@ export default createTool()
     
     .stringArg('model_id', 'ElevenLabs model to use', {
         required: false,
-        default: 'eleven_monolingual_v1',
-        enum: ['eleven_monolingual_v1', 'eleven_multilingual_v1', 'eleven_multilingual_v2']
+        default: 'eleven_turbo_v2_5',
+        enum: ['eleven_turbo_v2_5', 'eleven_turbo_v2', 'eleven_multilingual_v2', 'eleven_monolingual_v1', 'eleven_multilingual_v1']
     })
     
     .booleanArg('auto_play', 'Automatically play audio after generation', {
@@ -177,10 +229,34 @@ async function enableHook(
         }
     }
 
+    // If no model provided, prompt for selection
+    let finalModelId = modelIdInput;
+    if (!finalModelId) {
+        finalModelId = await selectModel(context);
+        if (!finalModelId) {
+            return {
+                success: false,
+                error: 'Model selection cancelled'
+            };
+        }
+    }
+
+    // If no voice provided, prompt for selection  
+    let finalVoiceId = voiceIdInput;
+    if (!finalVoiceId) {
+        finalVoiceId = await selectVoice(context);
+        if (!finalVoiceId) {
+            return {
+                success: false,
+                error: 'Voice selection cancelled'
+            };
+        }
+    }
+
     // Update configuration
     apiKey = finalApiKey;
-    voiceId = voiceIdInput;
-    modelId = modelIdInput;
+    voiceId = finalVoiceId;
+    modelId = finalModelId;
     hookEnabled = true;
 
     // Save configuration to settings.json
@@ -241,21 +317,27 @@ async function getStatus(context: ToolContext): Promise<any> {
     
     const status = config.enabled ? 'enabled' : 'disabled';
     const hasApiKey = !!config.apiKey;
+    
+    // Get friendly names for voice and model
+    const voiceName = AVAILABLE_VOICES.find(v => v.id === config.voiceId)?.name || config.voiceId || 'not selected';
+    const modelName = AVAILABLE_MODELS.find(m => m.id === config.modelId)?.name || config.modelId || 'not selected';
 
     return {
         success: true,
         output: `ElevenLabs TTS Status:\n` +
                 `Hook: ${status}\n` +
                 `API Key: ${hasApiKey ? 'configured' : 'not configured'}\n` +
-                `Voice ID: ${config.voiceId || 'default'}\n` +
-                `Model: ${config.modelId || 'eleven_monolingual_v1'}\n` +
+                `Voice: ${voiceName}\n` +
+                `Model: ${modelName}\n` +
                 `Auto-play: ${config.autoPlay !== false ? 'enabled' : 'disabled'}\n` +
                 `Audio output: ${outputDir}`,
         data: {
             enabled: config.enabled || false,
             hasApiKey,
             voiceId: config.voiceId,
+            voiceName,
             modelId: config.modelId,
+            modelName,
             autoPlay: config.autoPlay !== false
         }
     };
@@ -515,7 +597,7 @@ async function getApiKey(context: ToolContext): Promise<string | null> {
         const result = await context.registry.execute('input', {
             prompt: 'Please enter your ElevenLabs API key:',
             title: 'ElevenLabs API Key Required',
-            password: true
+            type: 'password'
         });
         
         if (result.success && result.output) {
@@ -529,6 +611,64 @@ async function getApiKey(context: ToolContext): Promise<string | null> {
         }
     } catch (error) {
         context.logger?.error(`Failed to get API key via input tool: ${error}`);
+    }
+    
+    return null;
+}
+
+// Select model using dropdown
+async function selectModel(context: ToolContext): Promise<string | null> {
+    // Try to load from settings first
+    const settings = await loadToolSettings();
+    if (settings?.modelId) {
+        return settings.modelId;
+    }
+    
+    try {
+        const result = await context.registry.execute('input', {
+            prompt: 'Select the ElevenLabs model to use:',
+            title: 'Model Selection',
+            type: 'dropdown',
+            options: AVAILABLE_MODELS.map(m => m.name),
+            default_value: AVAILABLE_MODELS[0].name
+        });
+        
+        if (result.success && result.output) {
+            // Find the model ID from the selected name
+            const selectedModel = AVAILABLE_MODELS.find(m => m.name === result.output);
+            return selectedModel?.id || null;
+        }
+    } catch (error) {
+        context.logger?.error(`Failed to select model via input tool: ${error}`);
+    }
+    
+    return null;
+}
+
+// Select voice using dropdown
+async function selectVoice(context: ToolContext): Promise<string | null> {
+    // Try to load from settings first
+    const settings = await loadToolSettings();
+    if (settings?.voiceId) {
+        return settings.voiceId;
+    }
+    
+    try {
+        const result = await context.registry.execute('input', {
+            prompt: 'Select the voice to use:',
+            title: 'Voice Selection',
+            type: 'dropdown',
+            options: AVAILABLE_VOICES.map(v => v.name),
+            default_value: AVAILABLE_VOICES[0].name
+        });
+        
+        if (result.success && result.output) {
+            // Find the voice ID from the selected name
+            const selectedVoice = AVAILABLE_VOICES.find(v => v.name === result.output);
+            return selectedVoice?.id || null;
+        }
+    } catch (error) {
+        context.logger?.error(`Failed to select voice via input tool: ${error}`);
     }
     
     return null;
