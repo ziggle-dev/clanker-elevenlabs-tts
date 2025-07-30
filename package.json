@@ -1,6 +1,6 @@
 {
   "name": "@ziggle-dev/elevenlabs-tts",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "ElevenLabs text-to-speech integration with real-time streaming audio playback for Clanker messages",
   "type": "module",
   "main": "src/index.ts",

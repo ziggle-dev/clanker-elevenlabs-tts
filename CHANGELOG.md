@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.4] - 2025-07-30
+
+### Fixed
+- **Fixed audio not playing** - Removed duplicate close event handler that was preventing audio playback
+- Audio now plays correctly when TTS is enabled
+
 ## [1.4.3] - 2025-07-30
 
 ### Added

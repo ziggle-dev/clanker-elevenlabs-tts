@@ -618,11 +618,6 @@ async function streamAudioPlayback(response: Response, context: ToolContext): Pr
         playerProcess.stderr.on('data', (data: Buffer) => {
             context.logger?.debug(`Audio player stderr: ${data.toString()}`);
         });
-        
-        // Remove from active processes when done
-        playerProcess.on('close', () => {
-            activeAudioProcesses = activeAudioProcesses.filter(p => p !== playerProcess);
-        });
 
         // Stream the response body to the player
         if (response.body) {
