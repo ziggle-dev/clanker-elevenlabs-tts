@@ -1,6 +1,6 @@
 # ElevenLabs TTS for Clanker
 
-A powerful text-to-speech integration for Clanker that uses ElevenLabs AI voices with real-time streaming audio playback. Version 1.4.0 introduces streaming capabilities for immediate audio feedback as text is generated.
+A powerful text-to-speech integration for Clanker that uses ElevenLabs AI voices with real-time streaming audio playback. Version 1.6.0 introduces the new Clanker voice as the default voice!
 
 ## Features
 
@@ -12,10 +12,15 @@ A powerful text-to-speech integration for Clanker that uses ElevenLabs AI voices
 - 🖥️ **Cross-Platform**: Works on macOS, Windows, and Linux with automatic player detection
 - 🔄 **Auto-Play Toggle**: Enable/disable automatic audio playback
 
-## What's New in v1.4.0
+## What's New in v1.6.0
+
+- **New Default Voice**: Clanker voice is now the default - a custom voice designed specifically for the Clanker AI assistant
+- **Voice ID**: Updated default voice to use the new Clanker voice (4uaHeMW5G2O8QTk52a2n)
+
+### Previous Updates (v1.4.0)
 
 - **Real-Time Streaming Audio**: Audio now streams directly from ElevenLabs API as it's generated
-- **Smart Defaults**: No configuration required - uses optimal voice (Sarah) and model (Turbo v2.5) by default
+- **Smart Defaults**: No configuration required - uses optimal voice (Clanker) and model (Turbo v2.5) by default
 - **Cross-Platform Audio Players**: Automatic detection and fallback for mpg123, sox, ffplay, and native players
 - **Improved Performance**: 3x faster audio playback with streaming vs file-based approach
 - **Better Error Handling**: Graceful fallbacks when streaming players aren't available
@@ -40,7 +45,7 @@ The tool stores its configuration in `~/.clanker/settings.json`:
   "tools": {
     "elevenlabs-tts": {
       "apiKey": "your-api-key-here",
-      "voiceId": "EXAVITQu4vr4xnSDxMaL",
+      "voiceId": "4uaHeMW5G2O8QTk52a2n",
       "modelId": "eleven_multilingual_v2",
       "autoPlay": true
     }

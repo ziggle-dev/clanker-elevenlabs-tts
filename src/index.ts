@@ -30,7 +30,7 @@ interface ElevenLabsSettings {
 // Global state for the hook
 let hookEnabled = false;
 let apiKey: string | undefined;
-let voiceId: string = 'EXAVITQu4vr4xnSDxMaL'; // Default voice (Sarah)
+let voiceId: string = '4uaHeMW5G2O8QTk52a2n'; // Default voice (Clanker)
 let modelId: string = 'eleven_turbo_v2_5'; // Default to newest model
 let outputDir: string;
 let settingsPath: string;
@@ -46,6 +46,7 @@ const AVAILABLE_MODELS = [
 ];
 
 const AVAILABLE_VOICES = [
+    { id: '4uaHeMW5G2O8QTk52a2n', name: 'Clanker' },
     { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Sarah' },
     { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel' },
     { id: '2EiwWnXFnvU5JabPnv8n', name: 'Clyde' },
@@ -94,7 +95,7 @@ const AVAILABLE_VOICES = [
 export default createTool()
     .id('elevenlabs_tts')
     .name('ElevenLabs TTS')
-    .description('ElevenLabs TTS with two modes: 1) Speak text directly with specific voices (Sarah, Josh, Rachel, Clyde, Emily, Adam, and 40+ more). 2) Enable passive mode to auto-speak all Clanker messages. Real-time streaming with instant playback.')
+    .description('ElevenLabs TTS with two modes: 1) Speak text directly with specific voices (Clanker, Sarah, Josh, Rachel, Clyde, Emily, Adam, and 40+ more). 2) Enable passive mode to auto-speak all Clanker messages. Real-time streaming with instant playback.')
     .category(ToolCategory.Utility)
     .capabilities(ToolCapability.NetworkAccess, ToolCapability.SystemExecute)
     .tags('elevenlabs', 'tts', 'text-to-speech', 'audio', 'voice', 'hook')
@@ -120,7 +121,7 @@ export default createTool()
     
     .stringArg('voice_id', 'ElevenLabs voice ID to use', {
         required: false,
-        default: 'EXAVITQu4vr4xnSDxMaL' // Sarah voice
+        default: '4uaHeMW5G2O8QTk52a2n' // Clanker voice
     })
     
     .stringArg('model_id', 'ElevenLabs model to use', {
@@ -211,7 +212,7 @@ export default createTool()
                 action: 'speak',
                 text: 'Hello world!'
             },
-            result: 'Successfully spoke text using voice: Sarah'
+            result: 'Successfully spoke text using voice: Clanker'
         },
         {
             description: 'Speak text with specific voice',
@@ -382,9 +383,9 @@ async function enableHook(
         if (savedSettings?.voiceId) {
             finalVoiceId = savedSettings.voiceId;
         } else {
-            // Default to Sarah voice
-            finalVoiceId = 'EXAVITQu4vr4xnSDxMaL';
-            context.logger?.info('Using default voice: Sarah');
+            // Default to Clanker voice
+            finalVoiceId = '4uaHeMW5G2O8QTk52a2n';
+            context.logger?.info('Using default voice: Clanker');
         }
     }
 
