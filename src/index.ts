@@ -34,6 +34,7 @@ let voiceId: string = 'EXAVITQu4vr4xnSDxMaL'; // Default voice (Sarah)
 let modelId: string = 'eleven_turbo_v2_5'; // Default to newest model
 let outputDir: string;
 let settingsPath: string;
+let activeAudioProcesses: any[] = [];
 
 // Available models and voices
 const AVAILABLE_MODELS = [
@@ -338,6 +339,27 @@ async function enableHook(
 async function disableHook(context: ToolContext): Promise<any> {
     hookEnabled = false;
 
+    // Kill all active audio processes immediately
+    context.logger?.info(`Stopping ${activeAudioProcesses.length} active audio processes...`);
+    for (const process of activeAudioProcesses) {
+        try {
+            process.kill('SIGTERM');
+            // If SIGTERM doesn't work, force kill after a short delay
+            setTimeout(() => {
+                if (!process.killed) {
+                    process.kill('SIGKILL');
+                }
+            }, 100);
+        } catch (error) {
+            context.logger?.error(`Failed to kill audio process: ${error}`);
+        }
+    }
+    activeAudioProcesses = [];
+
+    // Also clear any active TTS promises from shared state
+    const ttsState = context.sharedState.namespace('elevenlabs-tts');
+    ttsState.set('activePromises', []);
+
     // Update saved configuration
     const settings = await loadToolSettings() || {};
     await saveToolSettings({
@@ -348,11 +370,11 @@ async function disableHook(context: ToolContext): Promise<any> {
     // Remove the hook
     await removeHook(context);
 
-    context.logger?.info('ElevenLabs TTS hook disabled');
+    context.logger?.info('ElevenLabs TTS hook disabled and all audio stopped');
 
     return {
         success: true,
-        output: 'TTS hook disabled. Messages will no longer be converted to speech.'
+        output: 'TTS hook disabled. All playing audio has been stopped immediately.'
     };
 }
 
@@ -585,6 +607,9 @@ async function streamAudioPlayback(response: Response, context: ToolContext): Pr
                 throw new Error(`Unsupported platform: ${platform}`);
         }
 
+        // Track this process
+        activeAudioProcesses.push(playerProcess);
+        
         // Handle player errors
         playerProcess.on('error', (error: Error) => {
             context.logger?.error(`Audio player error: ${error.message}`);
@@ -592,6 +617,11 @@ async function streamAudioPlayback(response: Response, context: ToolContext): Pr
 
         playerProcess.stderr.on('data', (data: Buffer) => {
             context.logger?.debug(`Audio player stderr: ${data.toString()}`);
+        });
+        
+        // Remove from active processes when done
+        playerProcess.on('close', () => {
+            activeAudioProcesses = activeAudioProcesses.filter(p => p !== playerProcess);
         });
 
         // Stream the response body to the player
@@ -621,6 +651,9 @@ async function streamAudioPlayback(response: Response, context: ToolContext): Pr
             // Wait for player to finish
             await new Promise((resolve, reject) => {
                 playerProcess.on('close', (code: number) => {
+                    // Remove from active processes
+                    activeAudioProcesses = activeAudioProcesses.filter(p => p !== playerProcess);
+                    
                     if (code === 0) {
                         context.logger?.info('Streaming playback completed successfully');
                         resolve(undefined);

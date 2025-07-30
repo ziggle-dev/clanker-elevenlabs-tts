@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.3] - 2025-07-30
+
+### Added
+- **Immediate audio stop on disable** - When disabling TTS, all currently playing audio is immediately terminated
+- Track active audio processes for proper cleanup
+- Force kill audio processes if they don't respond to SIGTERM
+
+### Fixed
+- Audio no longer continues playing after TTS is disabled
+
 ## [1.4.2] - 2025-07-30
 
 ### Fixed
