@@ -459,7 +459,7 @@ async function streamSpeech(text: string, context: ToolContext): Promise<void> {
         return;
     }
 
-    context.logger?.info('Starting streaming TTS...');
+    context.logger?.info('Synthesizing...');
 
     // Call ElevenLabs streaming API
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
@@ -476,7 +476,7 @@ async function streamSpeech(text: string, context: ToolContext): Promise<void> {
                 stability: 0.5,
                 similarity_boost: 0.75
             },
-            optimize_streaming_latency: 3 // Optimize for lower latency
+            optimize_streaming_latency: 1 // Maximum optimization for lowest latency
         })
     });
 
@@ -725,42 +725,43 @@ async function installHook(context: ToolContext): Promise<void> {
 async function handleTTSHook(input: any, context: ToolContext): Promise<any> {
     context.logger?.info('Processing assistant message for TTS');
     
-    try {
-        // Get autoPlay setting
-        const settings = await loadToolSettings();
-        context.logger?.debug(`TTS settings - autoPlay: ${settings?.autoPlay}`);
-        
-        if (settings?.autoPlay !== false) {
-            context.logger?.info('Streaming TTS for message...');
-            // Use streaming for real-time playback
-            await streamSpeech(input.content, context);
-        } else {
-            context.logger?.info('Auto-play disabled, generating audio file only');
-            // Generate non-streaming audio file
-            const audioFile = await generateSpeech(input.content, context);
-            return {
-                continue: true,
-                data: {
-                    audioFile,
-                    played: false
-                }
-            };
-        }
-        
-        return {
-            continue: true,
-            data: {
-                played: true,
-                streamed: true
+    // Start the TTS process immediately without waiting
+    const ttsPromise = (async () => {
+        try {
+            // Get autoPlay setting
+            const settings = await loadToolSettings();
+            context.logger?.debug(`TTS settings - autoPlay: ${settings?.autoPlay}`);
+            
+            if (settings?.autoPlay !== false) {
+                context.logger?.info('Starting TTS stream immediately...');
+                // Use streaming for real-time playback
+                await streamSpeech(input.content, context);
+                context.logger?.info('TTS playback completed');
+            } else {
+                context.logger?.info('Auto-play disabled, generating audio file only');
+                // Generate non-streaming audio file
+                const audioFile = await generateSpeech(input.content, context);
+                context.logger?.info(`Audio file generated: ${audioFile}`);
             }
-        };
-    } catch (error) {
-        context.logger?.error('TTS streaming or generation failed:', error);
-        return {
-            continue: true,
-            error: error instanceof Error ? error.message : String(error)
-        };
-    }
+        } catch (error) {
+            context.logger?.error('TTS streaming or generation failed:', error);
+        }
+    })();
+    
+    // Store the promise in shared state so it can be awaited if needed
+    const ttsState = context.sharedState.namespace('elevenlabs-tts');
+    const promises = ttsState.get('activePromises') as Promise<void>[] || [];
+    promises.push(ttsPromise);
+    ttsState.set('activePromises', promises);
+    
+    // Return immediately to not block message display
+    return {
+        continue: true,
+        data: {
+            ttsStarted: true,
+            promise: ttsPromise
+        }
+    };
 }
 
 // Remove the hook from Clanker

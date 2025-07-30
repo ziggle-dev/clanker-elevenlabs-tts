@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.1] - 2025-07-30
+
+### Fixed
+- **Fixed delayed audio playback** - Audio now starts playing immediately when messages are displayed instead of waiting for the next message
+- Improved streaming latency by optimizing the streaming settings (reduced latency from 3 to 1)
+- Made TTS hook execution non-blocking to prevent message display delays
+
+### Changed
+- Updated status message to show "Synthesizing..." for immediate feedback
+
 ## [1.4.0] - 2025-07-29
 
 ### Added
