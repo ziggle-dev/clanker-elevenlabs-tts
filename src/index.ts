@@ -94,15 +94,24 @@ const AVAILABLE_VOICES = [
 export default createTool()
     .id('elevenlabs_tts')
     .name('ElevenLabs TTS')
-    .description('ElevenLabs text-to-speech with real-time streaming audio playback. Auto-plays Clanker messages as they stream, with smart defaults and persistent settings. Requires input tool v1.1.0+.')
+    .description('ElevenLabs TTS with two modes: 1) Speak text directly with specific voices (Sarah, Josh, Rachel, Clyde, Emily, Adam, and 40+ more). 2) Enable passive mode to auto-speak all Clanker messages. Real-time streaming with instant playback.')
     .category(ToolCategory.Utility)
     .capabilities(ToolCapability.NetworkAccess, ToolCapability.SystemExecute)
     .tags('elevenlabs', 'tts', 'text-to-speech', 'audio', 'voice', 'hook')
 
     // Arguments
-    .stringArg('action', 'Action to perform: enable, disable, or status', {
+    .stringArg('action', 'Action to perform: speak, enable, disable, or status', {
         required: true,
-        enum: ['enable', 'disable', 'status']
+        enum: ['speak', 'enable', 'disable', 'status']
+    })
+    
+    .stringArg('text', 'Text to speak (for speak action)', {
+        required: false
+    })
+    
+    .stringArg('voice', `Voice name: ${AVAILABLE_VOICES.slice(0, 8).map(v => v.name).join(', ')}, and ${AVAILABLE_VOICES.length - 8} more`, {
+        required: false,
+        enum: AVAILABLE_VOICES.map(v => v.name)
     })
     
     .stringArg('api_key', 'ElevenLabs API key (will prompt if not provided)', {
@@ -148,23 +157,9 @@ export default createTool()
             if (settings.modelId) modelId = settings.modelId;
             if (settings.enabled) {
                 hookEnabled = settings.enabled;
-                // If TTS is enabled in settings, install the hook
-                if (hookEnabled && settings.apiKey) {
-                    try {
-                        context.logger?.info('AUTO-INSTALLING HOOK because enabled=true in settings');
-                        // Check if hook is already installed
-                        const ttsState = context.sharedState.namespace('elevenlabs-tts');
-                        const existingHookId = ttsState.get('hookId') as string | undefined;
-                        if (!existingHookId) {
-                            await installHook(context);
-                            context.logger?.info('ElevenLabs TTS hook auto-enabled from settings');
-                        } else {
-                            context.logger?.info('Hook already installed, skipping auto-install');
-                        }
-                    } catch (error) {
-                        context.logger?.error('Failed to auto-enable TTS hook:', error);
-                    }
-                }
+                context.logger?.info('TTS is enabled in settings but hook installation is deferred');
+                // Note: Hook installation is deferred to first tool execution
+                // to ensure the hook system is fully initialized
             }
         }
         
@@ -173,9 +168,12 @@ export default createTool()
 
     // Execute
     .execute(async (args: ToolArguments, context: ToolContext) => {
-        const { action, api_key, voice_id, model_id, auto_play } = args;
+        const { action, api_key, voice_id, model_id, auto_play, text, voice } = args;
 
         switch (action) {
+            case 'speak':
+                return await speakText(text as string, voice as string || undefined, api_key as string || undefined, model_id as string || undefined, context);
+            
             case 'enable':
                 return await enableHook(api_key as string || undefined, voice_id as string || undefined, model_id as string || undefined, auto_play !== undefined ? auto_play as boolean : true, context);
             
@@ -208,26 +206,44 @@ export default createTool()
     // Examples
     .examples([
         {
-            description: 'Enable TTS (will prompt for API key if needed)',
+            description: 'Speak text with default voice',
+            arguments: {
+                action: 'speak',
+                text: 'Hello world!'
+            },
+            result: 'Successfully spoke text using voice: Sarah'
+        },
+        {
+            description: 'Speak text with specific voice',
+            arguments: {
+                action: 'speak',
+                text: 'Welcome to ElevenLabs TTS!',
+                voice: 'Josh'
+            },
+            result: 'Successfully spoke text using voice: Josh'
+        },
+        {
+            description: `Speak with a different voice (Available: ${AVAILABLE_VOICES.slice(0, 10).map(v => v.name).join(', ')}, and more...)`,
+            arguments: {
+                action: 'speak',
+                text: 'This is Rachel speaking!',
+                voice: 'Rachel'
+            },
+            result: 'Successfully spoke text using voice: Rachel'
+        },
+        {
+            description: 'Enable passive TTS for all messages',
             arguments: {
                 action: 'enable'
             },
             result: 'TTS hook enabled successfully'
         },
         {
-            description: 'Enable TTS with specific API key',
-            arguments: {
-                action: 'enable',
-                api_key: 'your-api-key-here'
-            },
-            result: 'TTS hook enabled successfully'
-        },
-        {
-            description: 'Disable TTS hook',
+            description: 'Disable passive TTS',
             arguments: {
                 action: 'disable'
             },
-            result: 'TTS hook disabled'
+            result: 'TTS hook disabled. All playing audio has been stopped immediately.'
         },
         {
             description: 'Check TTS status',
@@ -239,6 +255,90 @@ export default createTool()
     ])
     
     .build();
+
+// Speak text with specific voice
+async function speakText(
+    text: string | undefined,
+    voiceName: string | undefined,
+    apiKeyInput: string | undefined,
+    modelIdInput: string | undefined,
+    context: ToolContext
+): Promise<any> {
+    // Validate text input
+    if (!text || text.trim().length === 0) {
+        return {
+            success: false,
+            error: 'Text is required for speak action'
+        };
+    }
+
+    // Get API key
+    let finalApiKey = apiKeyInput || apiKey;
+    if (!finalApiKey) {
+        finalApiKey = await getApiKey(context) || '';
+        if (!finalApiKey) {
+            return {
+                success: false,
+                error: 'API key is required. Get one at https://elevenlabs.io'
+            };
+        }
+    }
+
+    // Get voice ID from name
+    let finalVoiceId = voiceId; // Default
+    if (voiceName) {
+        const selectedVoice = AVAILABLE_VOICES.find(v => v.name.toLowerCase() === voiceName.toLowerCase());
+        if (selectedVoice) {
+            finalVoiceId = selectedVoice.id;
+        } else {
+            return {
+                success: false,
+                error: `Voice "${voiceName}" not found. Available voices: ${AVAILABLE_VOICES.map(v => v.name).join(', ')}`
+            };
+        }
+    }
+
+    // Get model
+    const finalModelId = modelIdInput || modelId;
+
+    // Store current settings temporarily
+    const originalApiKey = apiKey;
+    const originalVoiceId = voiceId;
+    const originalModelId = modelId;
+
+    try {
+        // Temporarily set the values for the TTS functions
+        apiKey = finalApiKey;
+        voiceId = finalVoiceId;
+        modelId = finalModelId;
+
+        context.logger?.info(`Speaking text with voice: ${voiceName || 'default'} (${finalVoiceId})`);
+        
+        // Use streaming for immediate playback
+        await streamSpeech(text, context);
+
+        return {
+            success: true,
+            output: `Successfully spoke text using voice: ${voiceName || AVAILABLE_VOICES.find(v => v.id === finalVoiceId)?.name || 'unknown'}`,
+            data: {
+                text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+                voice: voiceName || AVAILABLE_VOICES.find(v => v.id === finalVoiceId)?.name,
+                voiceId: finalVoiceId
+            }
+        };
+    } catch (error) {
+        context.logger?.error('Failed to speak text:', error);
+        return {
+            success: false,
+            error: `Failed to speak text: ${error instanceof Error ? error.message : String(error)}`
+        };
+    } finally {
+        // Restore original settings
+        apiKey = originalApiKey;
+        voiceId = originalVoiceId;
+        modelId = originalModelId;
+    }
+}
 
 // Enable the TTS hook
 async function enableHook(
@@ -478,11 +578,15 @@ async function generateSpeech(text: string, context: ToolContext): Promise<strin
 
 // Stream speech using ElevenLabs API with real-time playback
 async function streamSpeech(text: string, context: ToolContext): Promise<void> {
+    context.logger?.info(`streamSpeech called with text length: ${text.length}`);
+    
     // Ensure we have an API key
     const currentApiKey = await getApiKey(context);
     if (!currentApiKey) {
+        context.logger?.error('No API key found!');
         throw new Error('API key not configured');
     }
+    context.logger?.info('API key found');
 
     // Clean text for TTS
     const cleanText = text
@@ -496,6 +600,7 @@ async function streamSpeech(text: string, context: ToolContext): Promise<void> {
         return;
     }
 
+    context.logger?.info(`Clean text length: ${cleanText.length}, preview: "${cleanText.substring(0, 50)}..."`);
     context.logger?.info('Synthesizing...');
 
     // Call ElevenLabs streaming API
@@ -519,11 +624,14 @@ async function streamSpeech(text: string, context: ToolContext): Promise<void> {
 
     if (!response.ok) {
         const error = await response.text();
+        context.logger?.error(`ElevenLabs API error: ${response.status} - ${error}`);
         throw new Error(`ElevenLabs streaming API error: ${response.status} - ${error}`);
     }
 
+    context.logger?.info('ElevenLabs API response OK, starting audio playback...');
     // Stream audio playback
     await streamAudioPlayback(response, context);
+    context.logger?.info('Audio playback completed');
 }
 
 // Stream to temp file and play (fallback for systems without streaming support)
@@ -734,16 +842,16 @@ async function installHook(context: ToolContext): Promise<void> {
         matcher: (role: string) => role === 'assistant',
         priority: 10,
         handler: async (input: any, hookContext: any) => {
-            context.logger?.info(`TTS HOOK TRIGGERED! Message role: ${input.role}, has content: ${!!input.content}`);
-            context.logger?.info(`Hook input:`, JSON.stringify(input));
+            context.logger?.info(`TTS HOOK TRIGGERED! Message role: ${input.role}, has content: ${!!input.content}, content length: ${input.content?.length || 0}`);
+            context.logger?.info(`Hook input keys:`, Object.keys(input).join(', '));
             
-            // Only process assistant messages
-            if (input.role !== 'assistant' || !input.content) {
+            // Only process assistant messages with actual content
+            if (input.role !== 'assistant' || !input.content || input.content.trim().length === 0) {
                 context.logger?.info('Skipping non-assistant message or no content');
                 return { continue: true };
             }
             
-            context.logger?.info('PROCESSING ASSISTANT MESSAGE FOR TTS!');
+            context.logger?.info(`PROCESSING ASSISTANT MESSAGE FOR TTS! Content: "${input.content.substring(0, 100)}..."`);
             return await handleTTSHook(input, context);
         },
         aiDescription: 'Converts assistant text responses to speech using ElevenLabs API',

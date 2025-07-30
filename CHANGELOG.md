@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.5.0] - 2025-07-30
+
+### Added
+- **New `speak` action** - Speak any text on-demand with specific voices
+- Support for 40+ voices by name (Sarah, Josh, Rachel, Clyde, Emily, Adam, and many more)
+- Two distinct operation modes:
+  1. Direct mode: Speak specific text with chosen voice
+  2. Passive mode: Auto-speak all Clanker messages
+
+### Changed
+- Made tool passive to support better auto-initialization
+- Reordered actions to prioritize `speak` as the primary action
+- Updated examples to showcase voice selection
+- Improved tool description to highlight dual modes
+
+### Fixed
+- Auto-enable from settings now works properly with deferred initialization
+
+## [1.4.5] - 2025-07-30
+
+### Fixed
+- **Fixed auto-enable from settings not working** - Deferred hook installation to first tool execution to ensure hook system is ready
+- TTS now properly auto-enables when `enabled: true` is set in settings
+- Hook installation timing issue resolved
+
+### Changed
+- Hook auto-installation moved from initialization phase to first tool execution
+
 ## [1.4.4] - 2025-07-30
 
 ### Fixed
