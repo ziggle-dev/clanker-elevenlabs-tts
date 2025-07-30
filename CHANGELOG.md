@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2] - 2025-07-30
+
+### Fixed
+- **Fixed duplicate audio playback** - Prevented double hook registration that was causing audio to play twice
+- Added check to prevent multiple hooks from being installed simultaneously
+- Properly removes existing hooks before installing new ones
+
 ## [1.4.1] - 2025-07-30
 
 ### Fixed

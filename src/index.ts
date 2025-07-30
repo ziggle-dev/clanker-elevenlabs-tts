@@ -151,8 +151,15 @@ export default createTool()
                 if (hookEnabled && settings.apiKey) {
                     try {
                         context.logger?.info('AUTO-INSTALLING HOOK because enabled=true in settings');
-                        await installHook(context);
-                        context.logger?.info('ElevenLabs TTS hook auto-enabled from settings');
+                        // Check if hook is already installed
+                        const ttsState = context.sharedState.namespace('elevenlabs-tts');
+                        const existingHookId = ttsState.get('hookId') as string | undefined;
+                        if (!existingHookId) {
+                            await installHook(context);
+                            context.logger?.info('ElevenLabs TTS hook auto-enabled from settings');
+                        } else {
+                            context.logger?.info('Hook already installed, skipping auto-install');
+                        }
                     } catch (error) {
                         context.logger?.error('Failed to auto-enable TTS hook:', error);
                     }
@@ -298,6 +305,14 @@ async function enableHook(
         autoPlay: finalAutoPlay
     });
 
+    // Check if hook is already installed
+    const ttsState = context.sharedState.namespace('elevenlabs-tts');
+    const existingHookId = ttsState.get('hookId') as string | undefined;
+    if (existingHookId) {
+        context.logger?.warn('Hook already installed, removing old hook first');
+        await removeHook(context);
+    }
+    
     // Install the hook into Clanker
     await installHook(context);
 
