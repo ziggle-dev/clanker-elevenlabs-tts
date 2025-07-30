@@ -461,12 +461,8 @@ async function disableHook(context: ToolContext): Promise<any> {
     const ttsState = context.sharedState.namespace('elevenlabs-tts');
     ttsState.set('activePromises', []);
 
-    // Update saved configuration
-    const settings = await loadToolSettings() || {};
-    await saveToolSettings({
-        ...settings,
-        enabled: false
-    });
+    // Don't update the enabled state in settings when disabling the hook
+    // This prevents permanent disabling of the tool
 
     // Remove the hook
     await removeHook(context);
@@ -483,7 +479,7 @@ async function disableHook(context: ToolContext): Promise<any> {
 async function getStatus(context: ToolContext): Promise<any> {
     const config = await loadToolSettings() || {};
     
-    const status = config.enabled ? 'enabled' : 'disabled';
+    const status = hookEnabled ? 'enabled' : 'disabled';
     const hasApiKey = !!config.apiKey;
     
     // Get friendly names for voice and model
@@ -500,7 +496,7 @@ async function getStatus(context: ToolContext): Promise<any> {
                 `Auto-play: ${config.autoPlay !== false ? 'enabled' : 'disabled'}\n` +
                 `Audio output: ${outputDir}`,
         data: {
-            enabled: config.enabled || false,
+            enabled: hookEnabled,
             hasApiKey,
             voiceId: config.voiceId,
             voiceName,
